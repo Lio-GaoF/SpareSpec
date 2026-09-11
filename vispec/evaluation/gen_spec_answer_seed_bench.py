@@ -21,6 +21,7 @@ from transformers import LlavaNextForConditionalGeneration
 from ..model.kv_cache import initialize_past_key_values
 from ..model.utils import *
 from .seed_bench_prompt import build_prompt
+from .local_benchmark_data import deterministic_subset, stream_parquet_subset
 
 
 def str2bool(value):
@@ -35,8 +36,28 @@ def str2bool(value):
 
 
 def load_data(args):
+    legacy_questions = os.path.join(args.data_folder, "llava-seed-bench.jsonl")
+    if not os.path.exists(legacy_questions):
+        data = stream_parquet_subset(
+            os.path.join(args.data_folder, "data", "test-*.parquet"),
+            args.sample_size,
+            filter_fn=lambda row: row["data_type"] == "image" and bool(row["image"]),
+        )
+        rows = []
+        for row in data:
+            choices = [row[f"choice_{letter}"] for letter in "abcd"]
+            choice_text = "\n".join(
+                f"{letter.upper()}. {choice}" for letter, choice in zip("abcd", choices)
+            )
+            rows.append({
+                "question_id": row["question_id"],
+                "image": row["image"][0],
+                "text": f"{row['question']}\n{choice_text}",
+                "answer": row["answer"],
+            })
+        return Dataset.from_list(rows)
     data = []
-    with open(os.path.join(args.data_folder, "llava-seed-bench.jsonl"), "r") as f:
+    with open(legacy_questions, "r") as f:
         lines = f.readlines()
         for l in lines:
             d = json.loads(l.strip())
@@ -46,7 +67,7 @@ def load_data(args):
             d["text"] = d["text"].partition("\n")[0]
             data.append(d)
 
-    return Dataset.from_list(data).shuffle(seed=42).select(range(0, 100))
+    return deterministic_subset(Dataset.from_list(data), args.sample_size)
 
 
 def run_eval(
@@ -429,6 +450,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-total-vis-select-tokens", type=int, default=0)
 
     parser.add_argument("--data-folder", type=str, default="data/seed_bench")
+    parser.add_argument("--sample-size", type=int, default=100, help="0 runs the full split")
 
     args = parser.parse_args()
 

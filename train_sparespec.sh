@@ -27,6 +27,7 @@ loadpath=""
 start="0"
 end="1000"
 gpus_per_model="1"
+workers_per_gpu="1"
 
 max_new_tokens="1024"
 temperature="0"
@@ -106,6 +107,7 @@ Stage2 data:
   --start N --end N            Dataset slice. Default: 0 1000
   --outdir PATH                Generated data root. Default: vispec_data/sparespec_data
   --gpus-per-model N           GPUs per generation worker. Default: 1
+  --workers-per-gpu N          Concurrent generation workers per GPU group. Default: 1
   --max-new-tokens N           Generated answer length. Default: 1024
   --temperature FLOAT          Generation temperature. Default: 0
   --save-attentions BOOL       Save compact vis_attn_scores. Default: true
@@ -180,6 +182,7 @@ while [[ $# -gt 0 ]]; do
     --start) require_value "$1" "${2:-}"; start="$2"; shift 2 ;;
     --end) require_value "$1" "${2:-}"; end="$2"; shift 2 ;;
     --gpus-per-model) require_value "$1" "${2:-}"; gpus_per_model="$2"; shift 2 ;;
+    --workers-per-gpu) require_value "$1" "${2:-}"; workers_per_gpu="$2"; shift 2 ;;
 
     --stage1-data) require_value "$1" "${2:-}"; stage1_data="$2"; shift 2 ;;
     --stage2-data) require_value "$1" "${2:-}"; stage2_data="$2"; shift 2 ;;
@@ -270,6 +273,7 @@ run_stage2_data() {
     --temperature "$temperature"
     --vis-query-window "$vis_query_window"
     --gpus_per_model "$gpus_per_model"
+    --workers_per_gpu "$workers_per_gpu"
   )
 
   if bool_enabled "$save_attentions"; then

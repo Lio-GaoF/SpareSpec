@@ -2195,8 +2195,17 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
             and past_key_values[0][0].current_length != 0
             and cache_position is None
         ):
-            cache_position = torch.tensor(
-                [past_key_values[0][0].current_length], device=inputs_embeds.device
+            # Tree verification feeds all draft-tree nodes in one forward pass.
+            # A single cache position is only correct for ordinary one-token
+            # autoregressive decoding.  Reusing it for every tree node makes
+            # the causal mask treat all nodes as the root, so descendants
+            # cannot attend to their accepted ancestors and target logits no
+            # longer match serial greedy decoding.
+            past_length = int(past_key_values[0][0].current_length.item())
+            cache_position = torch.arange(
+                past_length,
+                past_length + inputs_embeds.shape[1],
+                device=inputs_embeds.device,
             )
 
         # if we get 4D attention mask we cannot calculate rope deltas anymore. TODO @raushan fixme

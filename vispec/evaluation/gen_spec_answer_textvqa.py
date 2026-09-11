@@ -21,6 +21,7 @@ from transformers import LlavaNextForConditionalGeneration
 from ..model.kv_cache import initialize_past_key_values
 from ..model.utils import *
 from .textvqa_prompt import build_prompt
+from .local_benchmark_data import deterministic_subset, stream_parquet_subset
 
 
 def str2bool(value):
@@ -35,7 +36,15 @@ def str2bool(value):
 
 
 def load_data(args):
-    data = json.load(open(os.path.join(args.data_folder, "TextVQA_0.5.1_val.json")))
+    annotation_path = os.path.join(args.data_folder, "TextVQA_0.5.1_val.json")
+    if not os.path.exists(annotation_path):
+        rows = stream_parquet_subset(
+            os.path.join(args.data_folder, "data", "validation-*.parquet"), args.sample_size
+        )
+        for row in rows:
+            row["qid"] = row.pop("question_id")
+        return Dataset.from_list(rows)
+    data = json.load(open(annotation_path))
     assert (
         data["dataset_type"] == "val"
         and data["dataset_name"] == "textvqa"
@@ -57,7 +66,7 @@ def load_data(args):
         qid = d["question_id"]
         new_data.append({"image": image, "question": question, "qid": qid})
 
-    return Dataset.from_list(new_data).shuffle(seed=42).select(range(0, 100))
+    return deterministic_subset(Dataset.from_list(new_data), args.sample_size)
 
 
 def run_eval(
@@ -440,6 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-total-vis-select-tokens", type=int, default=0)
 
     parser.add_argument("--data-folder", type=str, default="data/textvqa")
+    parser.add_argument("--sample-size", type=int, default=100, help="0 runs the full split")
 
     args = parser.parse_args()
 

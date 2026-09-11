@@ -21,6 +21,7 @@ from transformers import LlavaNextForConditionalGeneration
 from ..model.kv_cache import initialize_past_key_values
 from ..model.utils import *
 from .gqa_prompt import build_prompt
+from .local_benchmark_data import deterministic_subset, load_parquet_glob
 
 
 def str2bool(value):
@@ -35,10 +36,27 @@ def str2bool(value):
 
 
 def load_data(args):
+    legacy_questions = os.path.join(args.data_folder, "llava_gqa_testdev_balanced.jsonl")
+    if not os.path.exists(legacy_questions):
+        questions = load_parquet_glob(
+            os.path.join(args.data_folder, "testdev_balanced_instructions", "*.parquet")
+        )
+        questions = deterministic_subset(questions, args.sample_size)
+        images = load_parquet_glob(
+            os.path.join(args.data_folder, "testdev_balanced_images", "*.parquet")
+        )
+        image_by_id = {row["id"]: row["image"] for row in images}
+        rows = []
+        for row in questions:
+            rows.append({
+                "question_id": row["id"],
+                "image": image_by_id[row["imageId"]],
+                "text": row["question"],
+                "answer": row["answer"],
+            })
+        return Dataset.from_list(rows)
     data = []
-    with open(
-        os.path.join(args.data_folder, "llava_gqa_testdev_balanced.jsonl"), "r"
-    ) as f:
+    with open(legacy_questions, "r") as f:
         lines = f.readlines()
         for l in lines:
             d = json.loads(l.strip())
@@ -48,7 +66,7 @@ def load_data(args):
             d["text"] = d["text"].partition("\n")[0]
             data.append(d)
 
-    return Dataset.from_list(data).shuffle(seed=42).select(range(0, 100))
+    return deterministic_subset(Dataset.from_list(data), args.sample_size)
 
 
 def run_eval(
@@ -431,6 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-total-vis-select-tokens", type=int, default=0)
 
     parser.add_argument("--data-folder", type=str, default="data/gqa")
+    parser.add_argument("--sample-size", type=int, default=100, help="0 runs the full split")
 
     args = parser.parse_args()
 

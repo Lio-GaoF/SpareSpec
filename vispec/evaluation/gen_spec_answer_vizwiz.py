@@ -21,6 +21,7 @@ from transformers import LlavaNextForConditionalGeneration
 from ..model.kv_cache import initialize_past_key_values
 from ..model.utils import *
 from .vizwiz_prompt import build_prompt
+from .local_benchmark_data import deterministic_subset, stream_parquet_subset
 
 
 def str2bool(value):
@@ -35,7 +36,15 @@ def str2bool(value):
 
 
 def load_data(args):
-    data = json.load(open(os.path.join(args.data_folder, "test.json"), "r"))
+    annotation_path = os.path.join(args.data_folder, "test.json")
+    if not os.path.exists(annotation_path):
+        rows = stream_parquet_subset(
+            os.path.join(args.data_folder, "data", "val-*.parquet"), args.sample_size
+        )
+        for row in rows:
+            row["qid"] = row.pop("question_id")
+        return Dataset.from_list(rows)
+    data = json.load(open(annotation_path, "r"))
     for d in data:
         d.update(
             {
@@ -47,7 +56,7 @@ def load_data(args):
         )
 
     ds = Dataset.from_list(data)
-    ds = ds.shuffle(seed=42).select(range(0, 100))
+    ds = deterministic_subset(ds, args.sample_size)
 
     return ds
 
@@ -432,6 +441,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-total-vis-select-tokens", type=int, default=0)
 
     parser.add_argument("--data-folder", type=str, default="data/vizwiz")
+    parser.add_argument("--sample-size", type=int, default=100, help="0 runs the full split")
 
     args = parser.parse_args()
 

@@ -13,7 +13,7 @@ parent_dir = os.path.dirname(script_dir)
 import time
 
 import shortuuid
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
 from PIL import Image
 from tqdm import tqdm
 from transformers import LlavaNextForConditionalGeneration
@@ -21,6 +21,7 @@ from transformers import LlavaNextForConditionalGeneration
 from ..model.kv_cache import initialize_past_key_values
 from ..model.utils import *
 from .mmvet_prompt import build_prompt
+from .local_benchmark_data import deterministic_subset, stream_parquet_subset
 
 
 def str2bool(value):
@@ -35,8 +36,13 @@ def str2bool(value):
 
 
 def load_data(args):
-    data = load_dataset("whyu/mm-vet", split="test")
-    return data
+    if args.data_folder:
+        pattern = os.path.join(args.data_folder, "data", "test-*.parquet")
+        try:
+            return Dataset.from_list(stream_parquet_subset(pattern, args.sample_size))
+        except FileNotFoundError:
+            pass
+    return deterministic_subset(load_dataset("whyu/mm-vet", split="test"), args.sample_size)
 
 
 def run_eval(
@@ -417,6 +423,8 @@ if __name__ == "__main__":
     parser.add_argument("--vis-entropy-alpha", type=float, default=1.2)
     parser.add_argument("--vis-query-window", type=int, default=8)
     parser.add_argument("--max-total-vis-select-tokens", type=int, default=0)
+    parser.add_argument("--data-folder", type=str, default=None)
+    parser.add_argument("--sample-size", type=int, default=100, help="0 runs the full split")
 
     args = parser.parse_args()
 

@@ -10,6 +10,7 @@ parser.add_argument("--data-path", type=str, default="LLaVA-Pretrain/")
 parser.add_argument("--max_new_tokens", type=int, default=1024)
 parser.add_argument("--temperature", type=float, default=1.0)
 parser.add_argument("--gpus_per_model", type=int, default=1)
+parser.add_argument("--workers_per_gpu", type=int, default=1)
 parser.add_argument("--save-attentions", "--save_attentions", dest="save_attentions", action="store_true")
 parser.add_argument("--vis-query-window", "--vis_query_window", dest="vis_query_window", type=int, default=8)
 args = parser.parse_args()
@@ -24,6 +25,8 @@ e = args.end
 num_p = torch.cuda.device_count()
 if args.gpus_per_model <= 0:
     raise ValueError("--gpus_per_model must be positive")
+if args.workers_per_gpu <= 0:
+    raise ValueError("--workers_per_gpu must be positive")
 if num_p == 0:
     raise RuntimeError("No visible CUDA devices")
 visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
@@ -39,6 +42,7 @@ gpus = [
 ]
 if visible_device_ids is not None:
     gpus = [[visible_device_ids[j] for j in group] for group in gpus]
+gpus = [group for group in gpus for _ in range(args.workers_per_gpu)]
 num_p = len(gpus)
 
 outdir = "{}/qwen2.5vl_pretrain_sparespec_{}_{}_mubf16".format(args.outdir, s, e)
